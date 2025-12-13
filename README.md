@@ -1,4 +1,4 @@
-# COMSEC Encryption Lifecycle Automation & Risk Dashboard
+# CELARD - COMSEC Encryption Lifecycle Automation & Risk Dashboard
 
 CELARD is a **demo-ready** (sanitized) project that shows how to build an **encryption / key lifecycle monitoring dashboard** and **automated notification workflow** using **Power BI + Power Automate + Outlook**.
 
