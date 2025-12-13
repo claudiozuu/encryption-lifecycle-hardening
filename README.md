@@ -1,113 +1,92 @@
-# CELARD - COMSEC Encryption Lifecycle Automation & Risk Dashboard
+# CELARD — COMSEC Encryption Lifecycle Automation & Risk Dashboard
+**COMSEC Encryption Lifecycle Automation & Risk Dashboard (CELARD)** is a portfolio/demo project showing how to monitor cryptographic key lifecycle risk (expiration, status, ownership) and automatically notify custodians **via Outlook** using **Power BI + Power Automate**.
 
-CELARD is a **demo-ready** (sanitized) project that shows how to build an **encryption / key lifecycle monitoring dashboard** and **automated notification workflow** using **Power BI + Power Automate + Outlook**.
-
-The goal is to provide **continuous visibility** into cryptographic/key lifecycle risk (e.g., approaching expiration) and automate **daily, non-spammy** alerts to assigned personnel.
-
-> **Security Notice (Important):**  
-> This repository contains **synthetic/sample data only**. It includes **no CUI/PII/COMSEC records**, no real key material, no unit identifiers, and no operational details. The implementation is intended to demonstrate governance, analytics, and automation patterns—not to replicate any protected system.
-
----
-
-## What This Demonstrates
-
-- **Encryption lifecycle governance** (inventory, expiration monitoring, status tracking)
-- **Risk analytics** (near-expiration, expired, high-risk categories)
-- **Compliance automation** (repeatable checks aligned to key management controls)
-- **Operational workflow automation** (Power BI alert → Power Automate → Outlook)
+> **Security / OPSEC Notice**
+> - This repo uses **synthetic data only**.
+> - Do **NOT** upload real key short titles, SKL inventories, custodian names/emails, destruction cert numbers, UICs, device IDs, locations, internal URLs, or screenshots showing live data.
+> - Everything here is meant to demonstrate **governance + analytics + automation patterns**, not operational COMSEC records.
 
 ---
 
-## Architecture
+## Why I Built This (Learning Path → Working System)
+I started with a simple goal:
+1. Track key inventory + expiration in a structured dataset.
+2. Turn that into a Power BI dashboard that highlights risk.
+3. Automatically notify assigned personnel **without spamming** them.
 
-**Data Source → Power BI Model → Risk Dashboard → Power BI Data Alert → Power Automate Flow → Outlook Email**
+Along the way I learned a few critical “gotchas”:
+- **Power BI alerts do not work in reports** — they only work on **Dashboard tiles**.
+- Alerts only work on **native Card / KPI / Gauge** visuals.
+- In some tenants, Power Automate’s Power BI query step returns a generic object like **“First table rows”** instead of individual columns — so you must check `length(First table rows) > 0`.
+- “Send email” failures often come from leftover references like `Apply_to_each` in the email body. Keep the body clean unless you intentionally build a loop.
 
-- **Power BI**: Tracks keys, computes days-to-expiration, risk categories, and KPIs  
-- **Power BI Service Dashboard**: Hosts a **Card/KPI/Gauge** tile used for alerting  
-- **Power Automate**: Executes a dataset query (DAX), checks for any expiring keys, and sends email notifications  
-- **Outlook**: Receives “Action Required” notification (limited to **once per day**)
+This README documents the complete end-to-end build (dataset → Power BI → alert → Power Automate → Outlook).
 
 ---
 
-## Repository Layout
-├─ README.md
-├─ docs/
-│ ├─ architecture.png
-│ ├─ workflow-diagram.png
-│ ├─ compliance-checklist.md
-│ └─ screenshots/ # redacted images only
-├─ data/
-│ └─ sample_key_inventory.csv
-├─ powerbi/
-│ ├─ dax-measures.md
-│ ├─ powerquery-m.md
-│ └─ template-notes.md # how to build/export .pbit safely
-└─ power_automate/
-├─ flow-steps.md
-└─ sample-email-template.md
+## Tech Stack
+- **Power BI Desktop / Power BI Service**
+- **DAX (calculated columns + measures)**
+- **Power Automate**
+- **Outlook (Send email V2)**
+
+---
+
+## End State Architecture
+**Data Source → Power BI Model → Risk Dashboard → (Pinned Card Tile) → Power BI Data Alert → Power Automate Flow → Outlook Email**
+
+---
 
 
 ---
 
-## Data Model (Sample)
+## Step 0 — Create the Dataset (Synthetic)
+Create `data/sample_key_inventory.csv` like this:
 
-The demo dataset uses fields like:
+```csv
+Key_ID,Key_Type,Classification,Expiration_Date,Custodian_Role,Device,Status,Destruction_Cert
+KEY-001,TEK,CUI,2026-01-05,CUSTODIAN-A,DEVICE-A,Active,
+KEY-002,KEK,CUI,2025-12-15,CUSTODIAN-B,DEVICE-B,Active,
+KEY-003,TEK,CUI,2025-12-10,CUSTODIAN-C,DEVICE-C,Pending Destruction,DC-1003
 
-- `Key_Type`
-- `Expiration_Date`
-- `Custodian_Role`
-- `Status` (Active / Expired / Pending Destruction)
-- `Days_Until_Expiration` (calculated)
-- `Risk_Category` (calculated)
-
-> Use the included sample file: `data/sample_key_inventory.csv`
-
----
-
-## Key Power BI Logic (DAX)
-
-Typical calculated columns/measures used:
-
-- **Days Until Expiration**
-- **Expired Flag**
-- **Risk Category**
-- **Keys Expiring Soon (<= 7 days)** — used for the alert card tile
-
-See: `powerbi/dax-measures.md`
+Minimum required fields to make the automation work:
+Key_ID
+Expiration_Date
+Custodian_Role (or email mapping field)
+Status
 
 ---
 
-## Power BI Setup (Dashboard + Alert)
-
-1. Import `data/sample_key_inventory.csv` into Power BI Desktop.
-2. Add DAX columns/measures from `powerbi/dax-measures.md`.
-3. Create a **Card** visual for: `KeysExpiringSoon` (<= 7 days).
-4. Publish to Power BI Service.
-5. Pin the **Card** to a **Dashboard** (alerts work on Card/KPI/Gauge tiles).
-6. Create a **Data Alert** on the pinned card tile:
-   - Condition: **Above 0**
-   - Frequency: set to **Once per day / at most once every 24 hours** (recommended)
+Step 1 — Power BI Desktop: Import Data 
+1. Open Power BI Desktop
+2. Get Data → Text/CSV
+3. Select sample_key_inventory.csv
+4. Ensure Expiration_Date is set to Date
 
 ---
 
-## Power Automate Setup (Email Notification)
+Step 2 — Power BI Desktop: Add DAX Columns (Core Logic)
+2.1 Days Until Expiration (Calculated Column) 
+Go to Modeling → New column:
 
-Trigger options:
-- **Preferred:** Power BI **data-driven alert** triggers the flow (recommended)
-- Flow then queries the dataset and sends email when any matching rows exist.
+## DAX
+Days Until Expiration =
+DATEDIFF ( TODAY(), 'Clean Data'[Expiration_Date], DAY )
 
-Core steps:
-1. **Trigger:** When a data-driven alert is triggered (Power BI)
-2. **Action:** Run a query against a dataset (Power BI)
-3. **Condition:** `length(First table rows) > 0`
-4. **If yes:** Send Outlook email (V2)
+Replace 'Clean Data' with your actual table name if different.
 
-Example DAX query (filter expiring within 7 days):
+2.2 Expired Flag (Calculated Column):
 
-```DAX
-EVALUATE
-FILTER(
-  'YourTableName',
-  'YourTableName'[Days Until Expiration] <= 7
-)
+## DAX
+Expired Flag =
+IF ( 'Clean Data'[Days Until Expiration] <= 0, "Expired", "Active" )
+
+
+
+
+
+
+
+
+
 
