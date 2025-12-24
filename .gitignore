@@ -1,1 +1,18 @@
+# secrets / env
+.env
+secrets*
+*.key
+
+# power bi artifacts (commit only if sanitized)
+*.pbix
+*.pbit
+
+# raw data exports (commit only sample_ files)
+data/raw/
+*.xlsx
+*.xls
+
+# OS files
+.DS_Store
+Thumbs.db
 
